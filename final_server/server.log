@@ -1,0 +1,16 @@
+
+--> Server started at 2023-04-24 11:05:00
+ |- New connection from 127.0.0.1 at 2023-04-24 11:05:06
+ |- Finish serving client 127.0.0.1 at 2023-04-24 11:05:24
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-24 11:05:35
+ |- Dropped client 127.0.0.1 at 2023-04-24 11:05:35
+--> Server was stop due to interupt signal at 2023-04-24 11:05:41
+
+--> Server started at 2023-04-24 11:05:45
+--> Server was stop due to interupt signal at 2023-04-24 11:07:30
+
+--> Server started at 2023-04-24 13:33:33
+ |- New connection from 127.0.0.1 at 2023-04-24 13:33:41
+ |- Finish serving client 127.0.0.1 at 2023-04-24 13:33:48
+ |- Dropped client 127.0.0.1 at 2023-04-24 13:33:48
+--> Server was stop due to interupt signal at 2023-04-24 13:34:04
