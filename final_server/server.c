@@ -3,8 +3,15 @@
 
 FILE * log_fp;
 #define MAX_REQUEST_SIZE 2047
-#define TIME_OUT 5.0 // TODO: To pass as argument
-#define MAX_CLIENTS 10 // TODO: To pass as argument
+
+// default options
+#define DEFAULT_PORT "2012"
+#define DEFAULT_RATE_RQS 2
+#define DEFAULT_RATE_TIME 60
+#define DEFAULT_MAX_USERS 3
+#define DEFAULT_TIME_OUT 80
+
+
 
 
 void print_time(FILE *fp, int add_space) {
@@ -39,11 +46,49 @@ void print_time(FILE *fp, int add_space) {
 }
 
 
-void handle_sigint(int sig){
+void handle_sigint(){
     fprintf(log_fp, "--> Server was stop due to interupt signal at ");
     fflush(log_fp);
     print_time(log_fp, 6);
     exit(0);
+}
+
+void parse_options(int argc, char *argv[], char *port, int *rate_rqs, int * rate_time, int *max_users, int *time_out){
+    int opt;
+    int option_index;
+
+    struct option long_options[] = {
+        {"PORT", required_argument, 0, 'p'},
+        {"RATE_MSGS", required_argument, 0, 'r'},
+        {"RATE_TIME", required_argument, 0, 't'},
+        {"MAX_USERS", required_argument, 0, 'u'},
+        {"TIME_OUT", required_argument, 0, 'o'},
+        {0, 0, 0, 0}
+
+    };
+
+    while((opt = getopt_long(argc, argv, "p:r:t:u:o:", long_options, &option_index)) != -1){
+        switch(opt){
+            case 'p':
+                port = optarg;
+                break;
+            case 'r':
+                *rate_rqs = atoi(optarg);
+                break;
+            case 't':
+                *rate_time = atoi(optarg);
+                break;
+            case 'u':
+                *max_users = atoi(optarg);
+                break;
+            case 'o':
+                *time_out = atoi(optarg);
+                break;
+            default:
+                fprintf(stderr, "Usage: %s [--PORT port] [-RATE_MSGS rate_msgs] [-RATE_TIME rate_time] [-MAX_USERS max_users] [-TIME_OUT time_out]\n", argv[0]);
+                exit(EXIT_FAILURE);
+        }
+    }
 }
 
 
@@ -102,7 +147,8 @@ struct client_info {
     char request[MAX_REQUEST_SIZE + 1];
     int received; // the number of bytes stored in the request array
     struct client_info *next;
-    clock_t last_active; //time when the client first connected
+    time_t last_request_time; // to monitor the client's rate limit (within a specified duration)
+    int request_count; // to monitor client's rate limit (number of requests)
 };
 
 static struct client_info *clients = 0;
@@ -128,6 +174,9 @@ struct client_info *get_client(SOCKET s) {
 
     n->address_length = sizeof(n->address);
     n->next = clients;
+    n->request_count = 0; //initialized value
+    n->last_request_time = time(NULL);
+
     clients = n;
     return n;
 }
@@ -168,7 +217,7 @@ void drop_client(struct client_info *client) {
     exit(1);
 }
 
-fd_set wait_on_clients(SOCKET server) {
+fd_set wait_on_clients(SOCKET server, int time_out) {
     fd_set reads; // a set of sockets
     FD_ZERO(&reads); // initialize the client file descripter set
     FD_SET(server, &reads); // populated the `reads`
@@ -182,8 +231,13 @@ fd_set wait_on_clients(SOCKET server) {
             max_socket = ci->socket;
         ci = ci->next;
     }
-    // select() returns when one or more of the sockets in `reads`
-    if (select(max_socket+1, &reads, 0, 0, 0) < 0) {
+
+    // specify a timeout with select
+    struct timeval timeout;
+    timeout.tv_sec = time_out; //default at 80 secs unless specified by command line option
+    timeout.tv_usec = 0;
+
+    if (select(max_socket+1, &reads, 0, 0, &timeout) < 0) {
         fprintf(stderr, "select() failed. (%d)\n", GETSOCKETERRNO());
         exit(1);
     }
@@ -197,6 +251,8 @@ void send_error(struct client_info *client, char * error_message){
 
 
 /** server resource and then drop client*/
+
+// TODO: to match the response format the professor required.
 
 void serve_resource(struct client_info *client, const char *image_content) {
     
@@ -248,8 +304,7 @@ void serve_resource(struct client_info *client, const char *image_content) {
     print_time(log_fp, 6);
 
     
-    drop_client(client);
-
+    // drop_client(client);
 
     int status = remove(output_filename);
 
@@ -261,7 +316,7 @@ void serve_resource(struct client_info *client, const char *image_content) {
 }
 
 
-int main() {
+int main(int argc, char *argv[]) {
 
     log_fp = fopen("server.log", "a");
 
@@ -270,9 +325,16 @@ int main() {
         exit(1);
     }
 
-    /**
-     * Error handling for command line arguments
-    */
+    // Initialize the default values;
+    char * port = DEFAULT_PORT;
+    int rate_rqs = DEFAULT_RATE_RQS;
+    int rate_time = DEFAULT_RATE_TIME;
+    int max_users = DEFAULT_MAX_USERS;
+    int time_out = DEFAULT_TIME_OUT;
+
+    parse_options(argc, argv, port, &rate_rqs, &rate_time, &max_users, &time_out);
+
+    
 
 #if defined(_WIN32)
     WSADATA d;
@@ -282,69 +344,58 @@ int main() {
     }
 #endif
 
-    SOCKET server = create_socket("127.0.0.1", "8080", log_fp);
+    SOCKET server = create_socket("127.0.0.1", port, log_fp);
     signal(SIGINT, handle_sigint);
 
-    
-    // to handle multiple clients
-    int client_fds[MAX_CLIENTS] = {0}; // create an array and initialized elements to be 0
-    int max_fd = server;
     int num_clients = 0;
 
     while(1) {
 
         fd_set reads;
-        reads = wait_on_clients(server);
+        reads = wait_on_clients(server, time_out);
 
         if (FD_ISSET(server, &reads)) {
+            struct client_info *client = get_client(-1);
 
-            if (num_clients < MAX_CLIENTS){
-                 struct client_info *client = get_client(-1);
+            client->socket = accept(server,
+                    (struct sockaddr*) &(client->address),
+                    &(client->address_length));
 
-                client->socket = accept(server,
-                        (struct sockaddr*) &(client->address),
-                        &(client->address_length));
+            if (!ISVALIDSOCKET(client->socket)) {
+                fprintf(stderr, "accept() failed. (%d)\n",
+                        GETSOCKETERRNO());
+                return 1;
+            }
 
-                if (!ISVALIDSOCKET(client->socket)) {
-                    fprintf(stderr, "accept() failed. (%d)\n",
-                            GETSOCKETERRNO());
-                    return 1;
-                }
-
-                // TODO: set the timer when client is connected and added to the log
-                // Must constantly check for the number of connections allowed.
-                // if max is reached => may not allowed more connection by disconnecting a client. Check the timeout..
+            if (num_clients < max_users){
+                
                 printf("New connection from %s.\n",
                         get_client_address(client));
 
-                // server.log for client connection
                 fprintf(log_fp, " |- New connection from %s at ", get_client_address(client));
-                // update clock time
-                client->last_active = clock();
 
                 fflush(log_fp);
                 print_time(log_fp, 6);
 
-                // increment client
                 num_clients++;
+
             } else {
-                fprintf(stderr, "Max clients exceeded. Disconnecting the first client");
-                //TODO: dropping the first client
+                fprintf(log_fp, "Max clients exceeded. Disconnecting incoming clients at ");
+                fflush(log_fp);
+                print_time(log_fp, 6);
+
+                // send a message to the connecting client to refuse connection
+                char * msg = "Server is busy, check back later...";
+                send(client->socket, msg, strlen(msg), 0);
+                drop_client(client);
             }
         }
 
 
         struct client_info *client = clients;
 
-        // TODO: in this code, instead of while client, => change to while clients < MAX_CLIENTS
         while(client) {
             struct client_info *next = client->next;
-             // Handling time_out
-            if ((clock() - client->last_active)/CLOCKS_PER_SEC > TIME_OUT){
-                send_error(client, "Timeout due to inactivity.\n");
-                client = next;
-                continue;                    
-            }
 
             if (FD_ISSET(client->socket, &reads)) {
 
@@ -356,9 +407,7 @@ int main() {
 
                 int r = recv(client->socket,
                         client->request + client->received,
-                        MAX_REQUEST_SIZE - client->received, 0);
-                
-                client->last_active = clock();      
+                        MAX_REQUEST_SIZE - client->received, 0);                     
 
                 if (r < 1) {
                     printf("Unexpected disconnect from %s.\n",
@@ -369,19 +418,44 @@ int main() {
                     print_time(log_fp, 6);    
                     drop_client(client);
 
+                    break; // break this while(client) loop                    
+                    num_clients--;
+
+                }
+
+                // serve the client
+                time_t now = time(NULL);
+                double time_diff = difftime(now, client->last_request_time);
+
+                // handling client request rate
+
+                if ((time_diff < rate_time) && (client->request_count > rate_rqs)){
+                     printf("Client exceeded request limit: %d", client->socket);
+                        char * msg = "You exceeded the request limit, check back in a minute";
+                        send(client->socket, msg, strlen(msg), 0);
                 } else {
+                     // allowing a new request
+                    client->request_count = 1;
+                    client->last_request_time = now;
+
                     client->received += r;
                     client->request[client->received] = 0;
 
                     serve_resource(client, client->request);
 
-                    // decrement client
+                    //clear the request buffer and reset `client->received` to 0 to allow the client to send another request
+                    memset(client->request, 0, MAX_REQUEST_SIZE);
+                    client->received = 0;
+
+
+                    // server receive a new request
+                    recv(client->socket,
+                        client->request + client->received,
+                        MAX_REQUEST_SIZE - client->received, 0);
+
+                    serve_resource(client, client->request);
                 }
             }
-
-            /**
-             * TODO: When to drop clients??
-            */
             client = next;
         }
     } //while(1)
@@ -398,21 +472,3 @@ int main() {
     printf("Finished.\n");
     return 0;
 }
-
-/***
- * LOG requirement 
- * • Rate limiting (RATE): Without reasonable safeguards, public servers could be attacked. 
- * To prevent this, the server operator should be able to specify the number of QR codes, 
- * specified by “number requests”, that should be allowed in a “number seconds” timeframe. 
- * Requests issued in excess of this rate should be discarded, and the occurrence of this condition logged at the server. 
- * The client should not be disconnected for violating rate limiting. 
- * Instead, they should receive an error message indicating why their command was not processed. 
- * Default: 2 requests per user per 60 seconds.
- * 
- * 
-• Maximum number of concurrent users (MAX USERS): Only a specified number of users should be able to 
-connect to the QR code server at a given time. Above this threshold, connecting users should receive 
-an error message indicating that the server is busy before terminating the connection. 
-Such refused connections should be logged at the server. When a user disconnects, a slot should be 
-opened for another connection. Default: 3 users.
-*/

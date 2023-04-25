@@ -3,6 +3,7 @@
 #define TIMEOUT 5.0
 #define IMAGE_BUFFER_SIZE 16348
 #define RESPONSE_SIZE 32768
+#define DEFAULT_SERVER_PORT "2012"
 
 
 /**Function prototypes*/
@@ -28,7 +29,12 @@ int main(int argc, char *argv[]) {
 
     // Hardcoding server information
     char *ip_address = "127.0.0.1";
-    char *port = "8080";
+    char *port = DEFAULT_SERVER_PORT;
+
+    if (argc == 2){
+        port = argv[1];
+    }
+
     SOCKET server = connect_to_server(ip_address, port);
 
 
@@ -36,7 +42,8 @@ int main(int argc, char *argv[]) {
     char input[100];
 
     while (1){
-        printf("Enter your command (send/quit): \n");
+    
+        printf("Enter your command (close/shutdown/send): \n");
         scanf("%s", input);
         if (strcmp(input, "send") == 0){
             char filename[100];
@@ -47,12 +54,18 @@ int main(int argc, char *argv[]) {
             char * image_buffer = read_image_file(filename, &file_size);
             send_request(server, ip_address, port, image_buffer, file_size);
             free(image_buffer);
-            handle_server_response(server);
+            if (handle_server_response(server) == 0){
+                printf("the server completed and sent back the result");
+            }
 
-        } else if (strcmp(input, "quit") == 0){
+            continue; // to allow the client to enter a new command
+        } else if (strcmp(input, "close") == 0){
             break;
+        } else if (strcmp(input, "shutdown") == 0){
+            //TODO: to clarify what does it mean by close to turn off server
         } else {
-            printf("Invalid command. Please enter 'send' or 'quit'.\n");
+            printf("Invalid command. Please enter 'send', 'close', or 'shutdown'.\n");
+            continue;
         }
     }
 

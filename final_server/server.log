@@ -14,3 +14,64 @@
  |- Finish serving client 127.0.0.1 at 2023-04-24 13:33:48
  |- Dropped client 127.0.0.1 at 2023-04-24 13:33:48
 --> Server was stop due to interupt signal at 2023-04-24 13:34:04
+
+--> Server started at 2023-04-24 22:28:27
+
+--> Server started at 2023-04-24 23:02:42
+ |- New connection from 127.0.0.1 at 2023-04-24 23:02:47
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-24 23:02:52
+ |- Dropped client 127.0.0.1 at 2023-04-24 23:02:52
+--> Server was stop due to interupt signal at 2023-04-24 23:03:00
+
+--> Server started at 2023-04-25 11:43:59
+ |- New connection from 127.0.0.1 at 2023-04-25 11:44:08
+ |- Finish serving client 127.0.0.1 at 2023-04-25 11:44:18
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 11:45:51
+ |- Dropped client 127.0.0.1 at 2023-04-25 11:45:51
+--> Server was stop due to interupt signal at 2023-04-25 12:44:35
+
+--> Server started at 2023-04-25 12:59:42
+ |- New connection from 127.0.0.1 at 2023-04-25 12:59:48
+ |- Finish serving client 127.0.0.1 at 2023-04-25 12:59:55
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:00:23
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:00:23
+--> Server was stop due to interupt signal at 2023-04-25 13:04:02
+
+--> Server started at 2023-04-25 13:04:35
+ |- New connection from 127.0.0.1 at 2023-04-25 13:04:40
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:04:47
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:05:14
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:05:14
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:05:14
+--> Server was stop due to interupt signal at 2023-04-25 13:05:20
+
+--> Server started at 2023-04-25 13:24:40
+ |- New connection from 127.0.0.1 at 2023-04-25 13:24:49
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:24:56
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:24:56
+ |- New connection from 127.0.0.1 at 2023-04-25 13:25:23
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:25:35
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:25:35
+ |- New connection from 127.0.0.1 at 2023-04-25 13:25:44
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:25:49
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:26:39
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:26:39
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:26:39
+Max clients exceeded. Disconnecting incoming clients at 2023-04-25 13:26:41
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:26:41
+Max clients exceeded. Disconnecting incoming clients at 2023-04-25 13:30:25
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:30:25
+--> Server was stop due to interupt signal at 2023-04-25 13:31:17
+
+--> Server started at 2023-04-25 13:31:22
+ |- New connection from 127.0.0.1 at 2023-04-25 13:31:27
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:31:32
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:32:13
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:32:13
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:32:13
+ |- New connection from 127.0.0.1 at 2023-04-25 13:32:23
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:32:29
+ |- Finish serving client 127.0.0.1 at 2023-04-25 13:32:39
+ |- Unexpected disconnect from 127.0.0.1 at 2023-04-25 13:32:39
+ |- Dropped client 127.0.0.1 at 2023-04-25 13:32:39
+--> Server was stop due to interupt signal at 2023-04-25 13:33:21

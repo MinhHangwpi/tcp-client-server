@@ -40,6 +40,8 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <getopt.h>
+#include <sys/select.h>
 
 
 

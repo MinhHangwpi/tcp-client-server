@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -Wpedantic -g
-SRC = headers.h server.c
-OBJ = server.o
-EXEC = QRserver
+SRC = headers.h qr_client.c
+OBJ = qr_client.o
+EXEC = QRclient
 
 all: $(EXEC)
 	echo "Successfully built the program $(EXEC)"
@@ -10,8 +10,8 @@ all: $(EXEC)
 $(EXEC): $(OBJ)
 	$(CC) $(CFLAGS) -o $(EXEC) $(OBJ)
 
-server.o: server.c headers.h
-	$(CC) $(CFLAGS) -c server.c
+qr_client.o: qr_client.c headers.h
+	$(CC) $(CFLAGS) -c qr_client.c
 
 clean:
 	rm -f $(OBJ) $(EXEC)
