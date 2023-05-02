@@ -2,15 +2,14 @@
 
 
 FILE * log_fp;
-#define MAX_REQUEST_SIZE 2047
+#define MAX_REQUEST_SIZE 8192
 
 // default options
-#define DEFAULT_PORT "2012"
+#define DEFAULT_PORT 2012
 #define DEFAULT_RATE_RQS 2
 #define DEFAULT_RATE_TIME 60
 #define DEFAULT_MAX_USERS 3
 #define DEFAULT_TIME_OUT 80
-
 
 
 
@@ -53,7 +52,7 @@ void handle_sigint(){
     exit(0);
 }
 
-void parse_options(int argc, char *argv[], char *port, int *rate_rqs, int * rate_time, int *max_users, int *time_out){
+void parse_options(int argc, char *argv[], int *port, int *rate_rqs, int * rate_time, int *max_users, int *time_out){
     int opt;
     int option_index;
 
@@ -70,7 +69,7 @@ void parse_options(int argc, char *argv[], char *port, int *rate_rqs, int * rate
     while((opt = getopt_long(argc, argv, "p:r:t:u:o:", long_options, &option_index)) != -1){
         switch(opt){
             case 'p':
-                port = optarg;
+                *port = atoi(optarg);
                 break;
             case 'r':
                 *rate_rqs = atoi(optarg);
@@ -92,8 +91,8 @@ void parse_options(int argc, char *argv[], char *port, int *rate_rqs, int * rate
 }
 
 
-SOCKET create_socket(const char* host, const char *port, FILE * fp) {
-    printf("Configuring local address...\n");
+SOCKET create_socket(const char *port, FILE * fp, int max_users) {
+    printf("Configuring IP address...\n");
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -102,7 +101,7 @@ SOCKET create_socket(const char* host, const char *port, FILE * fp) {
 
     struct addrinfo *bind_address;
 
-    getaddrinfo(host, port, &hints, &bind_address);
+    getaddrinfo(0, port, &hints, &bind_address);
 
     printf("Creating socket...\n");
     SOCKET socket_listen;
@@ -121,12 +120,8 @@ SOCKET create_socket(const char* host, const char *port, FILE * fp) {
     }
     freeaddrinfo(bind_address);
 
-    /**
-     * TODO: currently listending: Change from 10 to the MAX USERS
-    */
-
     printf("Listening...\n"); 
-    if (listen(socket_listen, 1) < 0) {
+    if (listen(socket_listen, max_users) < 0) {
         fprintf(stderr, "listen() failed. (%d)\n", GETSOCKETERRNO());
         exit(1);
     }
@@ -149,6 +144,7 @@ struct client_info {
     struct client_info *next;
     time_t last_request_time; // to monitor the client's rate limit (within a specified duration)
     int request_count; // to monitor client's rate limit (number of requests)
+    time_t last_active; // to monitor client's interaction for managing timeout
 };
 
 static struct client_info *clients = 0;
@@ -176,6 +172,7 @@ struct client_info *get_client(SOCKET s) {
     n->next = clients;
     n->request_count = 0; //initialized value
     n->last_request_time = time(NULL);
+    n->last_active = time(NULL);
 
     clients = n;
     return n;
@@ -205,6 +202,7 @@ void drop_client(struct client_info *client) {
 
             
             fprintf(log_fp, " |- Dropped client %s at ", get_client_address(client));
+            printf(" |- Dropped client %s at ", get_client_address(client));
             fflush(log_fp);
             print_time(log_fp, 6);
 
@@ -244,6 +242,9 @@ fd_set wait_on_clients(SOCKET server, int time_out) {
     return reads;
 }
 
+
+/** TODO: next*/
+
 void send_error(struct client_info *client, char * error_message){
     send(client->socket, error_message, strlen(error_message), 0);
     drop_client(client);
@@ -251,8 +252,6 @@ void send_error(struct client_info *client, char * error_message){
 
 
 /** server resource and then drop client*/
-
-// TODO: to match the response format the professor required.
 
 void serve_resource(struct client_info *client, const char *image_content) {
     
@@ -263,8 +262,8 @@ void serve_resource(struct client_info *client, const char *image_content) {
         printf("Error: could not open output file\n");
         exit(1);
     }
-
-    printf("saving content received from client %s %s\n", get_client_address(client), image_content);
+    
+    // printf("saving content received from client %s %s\n", get_client_address(client), image_content);
 
     ssize_t total_bytes_written = 0;
     int bytes_to_write = client->received;
@@ -276,36 +275,65 @@ void serve_resource(struct client_info *client, const char *image_content) {
             printf("Error writing to output file.\n");
             exit(1);
         }
-
         total_bytes_written += bytes_written;
     }
 
     close(output_fd);
 
-    // run the command and redirect its output to a file
+    // run the QR decoder and redirect its output to a file
     char command[1024];
-    snprintf(command, sizeof(command), "java -cp javase.jar:core.jar com.google.zxing.client.j2se.CommandLineRunner %s", output_filename);
-    FILE* fp = popen(command, "r");
-
-    if (fp == NULL){
+    snprintf(command, sizeof(command), "java -cp javase.jar:core.jar com.google.zxing.client.j2se.CommandLineRunner %s > output.txt 2>&1", output_filename);
+    int ret = system(command);
+    if (ret == -1){
         printf("Error executing command\n");
         exit(1);
     }
 
+    // Sending the result back to the client
     char buffer[1024];
+    size_t response_length = 0;
+
+    // get the length of the response
+    FILE* fp = fopen("output.txt", "r+");
+    if (fp == NULL) {
+        printf("Error opening output file.\n");
+        exit(1);
+    }
+    if (fseek(fp, 0L, SEEK_END) == -1){
+        printf("Error with fseek: \n");
+        exit(1);
+    }
+
+    response_length = ftell(fp);
+    
+    // Send the length of the response to the client
+    
+    char response_length_str[256];
+    snprintf(response_length_str, sizeof(response_length_str), "%lu", response_length);
+    send(client->socket, response_length_str, strlen(response_length_str), 0);
+
+    // rewind file ptr
+    rewind(fp);
+
+    ftell(fp);
+
+    // Send the actual response to the client
     while (fgets(buffer, sizeof(buffer), fp) != NULL){
         send(client->socket, buffer, strlen(buffer), 0);
+        /* for debugging */
+        // printf("%s", buffer);
     }
 
     pclose(fp);
     
     fprintf(log_fp, " |- Finish serving client %s at ", get_client_address(client));
+
+    printf(" |- Finishing serving client %s\n", get_client_address(client));
+
     fflush(log_fp);
     print_time(log_fp, 6);
 
     
-    // drop_client(client);
-
     int status = remove(output_filename);
 
     if (status != 0) {
@@ -314,6 +342,29 @@ void serve_resource(struct client_info *client, const char *image_content) {
         exit(1);
     }
 }
+
+
+
+void handle_client_timeout(struct client_info *client, int time_out, int * num_clients){
+    time_t now = time(NULL);
+    double laps_since_last_active = difftime(now, client->last_active);
+
+    if (laps_since_last_active > time_out){
+        
+        // log event at the server; e.g. client %IP address has been inactive for %s time, terminating due to timeout.
+        fprintf(log_fp, " |- Client %s has been inactive for %f seconds\n |- client %s terminated at ", get_client_address(client), laps_since_last_active, get_client_address(client));
+        fflush(log_fp);
+        print_time(log_fp, 6);
+
+        // send error to client and drop client
+        char * msg = "You have been inactive for %f seconds, terminating connection...\n";
+        send(client->socket, msg, strlen(msg), 0);
+
+        drop_client(client);
+        num_clients--;
+    }
+}
+
 
 
 int main(int argc, char *argv[]) {
@@ -326,14 +377,13 @@ int main(int argc, char *argv[]) {
     }
 
     // Initialize the default values;
-    char * port = DEFAULT_PORT;
+    int port = DEFAULT_PORT;
     int rate_rqs = DEFAULT_RATE_RQS;
     int rate_time = DEFAULT_RATE_TIME;
     int max_users = DEFAULT_MAX_USERS;
     int time_out = DEFAULT_TIME_OUT;
 
-    parse_options(argc, argv, port, &rate_rqs, &rate_time, &max_users, &time_out);
-
+    parse_options(argc, argv, &port, &rate_rqs, &rate_time, &max_users, &time_out);
     
 
 #if defined(_WIN32)
@@ -343,8 +393,19 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 #endif
+    // convert int port to string
+    char port_str[10];
+    sprintf(port_str, "%d", port);
 
-    SOCKET server = create_socket("127.0.0.1", port, log_fp);
+    SOCKET server = create_socket(port_str, log_fp, max_users);
+    
+    printf("Server configuration %s\n", port_str);
+    printf("port: %d\n", port);
+    printf("rate_rqs: %d\n", rate_rqs);
+    printf("rate_time: %d\n", rate_time);
+    printf("max_users: %d\n", max_users);
+    printf("time_out: %d\n", time_out);
+
     signal(SIGINT, handle_sigint);
 
     int num_clients = 0;
@@ -378,9 +439,12 @@ int main(int argc, char *argv[]) {
                 print_time(log_fp, 6);
 
                 num_clients++;
+                printf("\nCurrent number of clients: %d\n", num_clients);
+
+                client->last_active = time(NULL);
 
             } else {
-                fprintf(log_fp, "Max clients exceeded. Disconnecting incoming clients at ");
+                fprintf(log_fp, " |- Max clients exceeded. Disconnecting incoming client %s at ", get_client_address(client));
                 fflush(log_fp);
                 print_time(log_fp, 6);
 
@@ -396,14 +460,10 @@ int main(int argc, char *argv[]) {
 
         while(client) {
             struct client_info *next = client->next;
+            // handle client timeout
+            handle_client_timeout(client, time_out, &num_clients);
 
             if (FD_ISSET(client->socket, &reads)) {
-
-                if (MAX_REQUEST_SIZE == client->received) {
-                    send_error(client, "Invalid request.\n");
-                    client = next;
-                    continue;
-                }
 
                 int r = recv(client->socket,
                         client->request + client->received,
@@ -417,43 +477,67 @@ int main(int argc, char *argv[]) {
                     fflush(log_fp);
                     print_time(log_fp, 6);    
                     drop_client(client);
-
                     break; // break this while(client) loop                    
                     num_clients--;
-
                 }
+
+                if (client->received > MAX_REQUEST_SIZE) {
+                    send_error(client, "The request exceeded the maximum size of 8192.\n");
+                    printf("Client %s sent a request that is too large, at %d\n", get_client_address(client), client->received);
+                    client = next;
+                    continue;
+                }
+
+                fprintf(log_fp, " |- Received a valid request from client %s at ", get_client_address(client));
+                fflush(log_fp);
+                print_time(log_fp, 6);
+                client->last_active = time(NULL);
+
 
                 // serve the client
                 time_t now = time(NULL);
                 double time_diff = difftime(now, client->last_request_time);
+                printf("\nBefore new request: %d requests %f ago\n", client->request_count, time_diff);
 
                 // handling client request rate
 
-                if ((time_diff < rate_time) && (client->request_count > rate_rqs)){
-                     printf("Client exceeded request limit: %d", client->socket);
-                        char * msg = "You exceeded the request limit, check back in a minute";
-                        send(client->socket, msg, strlen(msg), 0);
+                if ((time_diff < rate_time) && (client->request_count >= rate_rqs)){
+                    printf("Client %s exceeded request limit: %d", get_client_address(client), client->socket);
+                    fprintf(log_fp, "Client %s exceeded request limit: %d", get_client_address(client), client->socket);
+                    
+                    char * msg = "You exceeded the request limit, check back in a minute";
+                    send(client->socket, msg, strlen(msg), 0);
                 } else {
-                     // allowing a new request
-                    client->request_count = 1;
+
+                    if (time_diff > rate_time){
+                        // reset client->request_count
+                        client->request_count = 0;
+                    }   
+
+                    // allowing a new request and increment request_count
+                    client->request_count++;
                     client->last_request_time = now;
 
                     client->received += r;
-                    client->request[client->received] = 0;
+                    client->request[client->received] = '\0';
+
+                    if (strcmp(client->request, "shutdown") == 0){
+                        fprintf(log_fp, " |- Received a \"shutdown\" request from client %s at ", get_client_address(client));
+                        fflush(log_fp);
+                        print_time(log_fp, 6);
+                        
+                        drop_client(client);
+                        CLOSESOCKET(server);
+                        fprintf(log_fp, "--> Server was stopped after client shutdown request at ");
+                        fflush(log_fp);
+                        print_time(log_fp, 6);                        
+                    }
 
                     serve_resource(client, client->request);
 
                     //clear the request buffer and reset `client->received` to 0 to allow the client to send another request
                     memset(client->request, 0, MAX_REQUEST_SIZE);
                     client->received = 0;
-
-
-                    // server receive a new request
-                    recv(client->socket,
-                        client->request + client->received,
-                        MAX_REQUEST_SIZE - client->received, 0);
-
-                    serve_resource(client, client->request);
                 }
             }
             client = next;
